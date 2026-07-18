@@ -1,0 +1,209 @@
+BodyMap Net — File Manifest
+============================
+One line per file/folder explaining what it's for. See README.md for the
+full story (setup, build order, architecture). Paths are relative to this
+folder.
+
+TOP LEVEL
+---------
+README.md              Full project documentation: what it is, how to set it
+                        up, how to build/train the models, and how it's
+                        architected.
+FILES.txt               This file.
+GITHUB_GUIDE.md          Step-by-step walkthrough for publishing this folder
+                        to a new GitHub repository.
+requirements.txt         Python dependencies (torch, flask, jinja2, matplotlib,
+                        numpy). Install with `pip install -r requirements.txt`.
+.gitignore               Excludes venv/__pycache__ and every generated
+                        artifact (trained checkpoints, processed CSVs, the
+                        SQLite DB) — those are rebuilt by the pipeline below,
+                        not committed.
+config.py                 Single source of truth for the whole project: file
+                        paths, the 44-exercise catalog, all label vocabularies
+                        (BMI bands, body-fat bands, calorie bands, archetypes,
+                        body goals), model hyperparameters, the shared
+                        feature-vector builders every model's input is built
+                        from, and the password policy
+                        (validate_password_policy()). Nothing else
+                        hard-codes a threshold or path.
+
+data/  (synthetic dataset generation)
+--------------------------------------
+data_generator.py         Generates the synthetic training population: ~610
+                        fake users x ~8 weeks each, across 5 body personas
+                        (obese_sedentary, buff_muscular, skinny_athlete,
+                        average_balanced, endurance_focused) and 4 goals,
+                        with realistic per-persona exercise/BMI/body-fat/
+                        calorie patterns and derived ground-truth labels.
+                        Writes data/raw/fused_logs.csv.
+raw/                       (generated) Output of data_generator.py. Not
+                        committed — see .gitignore.
+processed/                  (generated) Output of model/dataset.py: one
+                        train/val/test CSV per branch, plus
+                        impute_stats.json (per-field mean/std used to
+                        normalize inputs, with missing-value flags). Not
+                        committed.
+
+db/  (persistence)
+-------------------
+schema.sql                 SQLite schema: users, test_runs (one row per
+                        submitted test, keyed by user + calendar week),
+                        and check-in streak bookkeeping.
+database.py                 All SQL lives here — every other module goes
+                        through this instead of writing raw queries.
+                        Creates the DB file and applies schema.sql on first
+                        use.
+bodymap.db                 (generated) The actual SQLite database file. Not
+                        committed — starts empty and fills up as people use
+                        the app. Delete it any time to reset all data.
+
+model/  (PyTorch models + training pipeline)
+-----------------------------------------------
+__init__.py                Package marker + one-line index of this folder.
+branches.py                 The 4 small encoder networks — Exercise, BMI,
+                        Body Fat, Calories — each maps its raw inputs to a
+                        16-dim embedding + a classification head over its
+                        own label vocabulary (e.g. Under/Balanced/Over-
+                        training).
+fusion.py                    BodyMapNet: the "Behaviour Profile" fusion
+                        model. Combines whichever of the 4 branch
+                        embeddings are present (via self-attention, with a
+                        learned "missing branch" token standing in for any
+                        skipped test) and the user's goal (one-hot,
+                        concatenated in before the final decision) into one
+                        of 5 archetype predictions, plus a 2D map position.
+dataset.py                     Turns raw/fused_logs.csv into the per-branch
+                        train/val/test CSVs and impute_stats.json, and
+                        defines the PyTorch Dataset classes both training
+                        scripts use.
+train_branches.py               Trains the 4 branch encoders independently
+                        (early stopping on val loss), saves each to
+                        model/checkpoints/.
+train_fusion.py                  Freezes the trained branch encoders,
+                        trains BodyMapNet on top of them with modality
+                        dropout (randomly hiding branches during training
+                        so it learns to cope with partial data), saves
+                        model/checkpoints/fusion_model.pt.
+evaluate.py                       Reports test-set accuracy/F1 for all 4
+                        branches, plus fusion accuracy broken down by how
+                        many of the 4 branches were present (proves
+                        graceful degradation).
+checkpoints/                       (generated) The 5 trained .pt files.
+                        Not committed — see .gitignore; retrain with the
+                        commands in README.md.
+
+app/  (Flask web application)
+--------------------------------
+__init__.py                Package marker + one-line index of this folder.
+app.py                       All Flask routes: registration/login (user +
+                        admin), the test-submission flow, the result page,
+                        history, and settings (profile, password, admin
+                        user management, appearance).
+inference.py                  Loads the 5 trained checkpoints once at
+                        startup and exposes predict_exercise / predict_bmi
+                        / predict_bodyfat / predict_calories / predict_fused
+                        — each takes the user's goal as a parameter.
+charts.py                      Renders every chart server-side with
+                        Matplotlib (bar charts, the archetype/behaviour-
+                        profile 2D map) and returns them as base64 PNG so
+                        no client-side charting library is needed.
+insights.py                    Turns a result into plain-English tips (the
+                        "insights panel") and computes the goal-verdict
+                        banner shown at the top of the result page. Both
+                        pull their good/bad/neutral judgment from
+                        outcomes.py so they can never contradict it.
+outcomes.py                      The single rulebook for "is this label
+                        good, bad, or neutral news, given the user's
+                        goal?" — one function per metric (exercise, BMI,
+                        body fat, calories, archetype). insights.py and
+                        streaks.py both call into this instead of each
+                        keeping their own opinion.
+streaks.py                        Computes consecutive-week positive/
+                        negative streaks (training consistency, eating,
+                        BMI, goal alignment, and per-muscle-group misses)
+                        from a user's test history, using outcomes.py for
+                        every judgment call.
+
+app/templates/  (Jinja2 HTML, extend base.html)
+--------------------------------------------------
+base.html                  Shared shell: header/nav, the login modal, the
+                        flash-message banner, footer, and all <script>/
+                        <link> tags. Every other template extends this.
+home.html                   Landing page: explains the 4 tests + the
+                        Behaviour Profile fusion model, with a "How this
+                        works" collapsible section.
+test.html                     The test-submission form: all 4 tests +
+                        the Behaviour Profile checkbox, with live red/
+                        yellow/green validation and a "reuse a previous
+                        week" autofill dropdown.
+result.html                    One test run's full report: per-test
+                        charts/labels, the goal-verdict banner, the tips
+                        panel, weekly streaks, and the Behaviour Profile
+                        card.
+history.html                     A user's full test-run history (admins
+                        can look up any account), plus that account's
+                        current streaks.
+settings.html                     Appearance (shared/global), profile +
+                        password for the logged-in user, and — for admins
+                        — account lookup and full user management (create/
+                        reset-password/delete).
+_streaks.html                      Shared partial that renders the streaks
+                        list; included by both result.html and
+                        history.html so they always look identical.
+
+app/static/css/
+------------------
+style.css                  All styling for the whole site (the "brutalist"
+                        theme: thick borders, monospace, hard shadows).
+print.css                    Print-specific stylesheet used when a result
+                        page is saved to PDF via the browser's native
+                        window.print().
+
+app/static/js/  (vanilla JS, no build step, no libraries)
+--------------------------------------------------------------
+axis-script.js              Shared page-load behaviour: scroll-reveal
+                        animations, mobile nav, etc.
+login.js                     Opens/closes the login modal, switches
+                        between the user/admin login tabs.
+theme.js                     Applies the saved theme/font-size/accent-color
+                        on every page load (before first paint, to avoid a
+                        flash of the wrong theme).
+appearance.js                  Wires up the theme/font-size/accent-color
+                        controls on the Settings page.
+id_picker.js                     Powers the "select existing user / enter ID
+                        manually" toggle used on lookup and history forms.
+validators.js                     Live red/yellow/green field validation on
+                        the test form (exercise-group set/session totals,
+                        BMI/body-fat/calorie ranges) — self-contained, no
+                        server round-trip.
+autofill.js                        "Use my saved average measurements"
+                        button on the BMI/body-fat tests.
+week_autofill.js                     "Reuse a previous week's numbers"
+                        dropdown on the test form.
+password_toggle.js                     Adds a small eye-icon button to
+                        every password field on the site so people can
+                        check what they typed before submitting.
+password_strength.js                     Live checklist under any "new
+                        password" field showing which policy requirements
+                        (length, uppercase, lowercase, special symbol) are
+                        currently met — mirrors the server-side check in
+                        config.validate_password_policy().
+password_confirm.js                      Live-validates that a "confirm
+                        password" field matches its paired password field.
+
+tests/  (standalone dev/demo scripts — not part of the web app)
+--------------------------------------------------------------------
+auto_tester.py               CLI sanity-checker for the 5 models directly
+                        (bypassing the web UI): run a branch on manual/
+                        random/scenario inputs, or run the fusion model
+                        with a chosen subset of branches present, optionally
+                        conditioned on a --goal.
+super_demo.py                 Seeds the database with 10 demo accounts
+                        (different names/goals/passwords), each backfilled
+                        with several weeks of realistic test data through
+                        the real trained models, deliberately shaped to
+                        exercise every streak scenario (positive runs,
+                        negative runs, a missed-week gap, an alternating
+                        no-streak account, per-muscle-group misses). Prints
+                        each account's computed streaks and goal verdict so
+                        you can sanity-check before even opening a browser.

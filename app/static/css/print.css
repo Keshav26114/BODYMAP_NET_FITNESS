@@ -1,0 +1,7 @@
+@media print {
+    header, nav, footer, .no-print { display: none !important; }
+    body { background: white; color: black; padding-top: 0; }
+    main { max-width: 100%; padding: 0; }
+    .report-card { break-inside: avoid; border: 1px solid #000; box-shadow: none; }
+    .report-card--fused { border: 1px solid #000; }
+}

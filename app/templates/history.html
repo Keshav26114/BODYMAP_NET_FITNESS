@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}History{% endblock %}
+{% block content %}
+<section class="page-head reveal">
+  <p class="eyebrow">Records</p>
+  <h1 class="page-title">Test History</h1>
+  {% if auth_role == 'admin' %}
+  <p class="muted">Pick any account below to review every assessment stored for it.</p>
+  {% else %}
+  <p class="muted">Select your account below to review your own assessment history.</p>
+  {% endif %}
+</section>
+
+<details class="about-block reveal">
+  <summary>How it saves — one row per week</summary>
+  <div class="about-block__body">
+    <p>
+      Every test you submit is stored against a <strong>calendar week</strong> (Monday&ndash;Sunday),
+      not a single moment in time. If you submit more than once in the same week, the
+      latest submission for that week is what counts &mdash; it doesn't create a duplicate row.
+    </p>
+    <p>
+      That week-based structure is what the <strong>streaks</strong> above are built from: they walk
+      backwards from your most recent logged week and count how many <em>consecutive</em>
+      calendar weeks in a row a metric stayed good (or bad). A week you skip entirely — or
+      simply didn't retake a given test in — breaks the streak, the same as a bad week would.
+    </p>
+    <p>
+      Every row below is a permanent record: the exact numbers you entered, the model's
+      prediction at the time, and (if you ran it) that week's Behaviour Profile. Click
+      <strong>View</strong> on any row to see the full report again, including the tips and
+      goal-verdict banner as they were computed for that specific week.
+    </p>
+  </div>
+</details>
+
+{% if error %}<div class="notice notice--error">{{ error }}</div>{% endif %}
+
+<form method="post" action="{{ url_for('history') }}" class="inline-form">
+  <label for="hist_id_select">Unique ID</label>
+  <div class="id-picker">
+    <select id="hist_id_select" class="id-picker__select" name="unique_id">
+      <option value="">-- Select existing user --</option>
+      {% for u in users %}
+      <option value="{{ u.unique_id }}" {% if unique_id == u.unique_id %}selected{% endif %}>{{ u.unique_id }} - {{ u.name }}</option>
+      {% endfor %}
+    </select>
+    <input type="text" id="hist_id" class="id-picker__manual-input" hidden disabled
+           value="{{ unique_id or '' }}" placeholder="e.g. 8FA3C1D7">
+    <button type="button" class="id-picker__toggle">Enter ID manually instead</button>
+  </div>
+  <button type="submit" class="btn btn--primary">Look Up</button>
+</form>
+
+{% include "_streaks.html" %}
+
+{% if runs is defined %}
+  {% if runs %}
+  <table>
+    <thead>
+      <tr><th>Date</th><th>Tests Included</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for r in runs %}
+      <tr>
+        <td>{{ r.run_at }}</td>
+        <td>{{ r.tests_included | replace(",", ", ") }}{% if r.used_inference %}, behaviour profile{% endif %}</td>
+        <td><a class="link" href="{{ url_for('result', run_id=r.run_id) }}">View</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No test runs found for this ID yet.</p>
+  {% endif %}
+{% endif %}
+{% endblock %}

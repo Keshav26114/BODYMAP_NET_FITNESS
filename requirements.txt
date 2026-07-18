@@ -1,0 +1,5 @@
+torch
+flask
+jinja2
+matplotlib
+numpy

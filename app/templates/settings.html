@@ -1,0 +1,279 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+<section class="page-head reveal">
+  <p class="eyebrow">Account</p>
+  <h1 class="page-title">Settings</h1>
+  <p class="muted">Customize how BodyMap Net looks for everyone, and manage your profile and password below.</p>
+</section>
+
+<details class="about-block reveal">
+  <summary>What each setting does</summary>
+  <div class="about-block__body">
+    <p><strong>Appearance</strong> — theme, font size, and accent color. These are shared,
+    site-wide preferences: changing them here updates the look for every account, admin or
+    user, the moment you save. There's no "per-user" appearance setting.</p>
+    {% if is_admin %}
+    <p><strong>Account lookup</strong> — jump straight to any user's profile, body goal, or
+    password, without asking them for their ID first.</p>
+    <p><strong>Manage users</strong> — create new accounts, and reset a password or delete an
+    account for any existing one. Both of those require typing that account's <em>current</em>
+    password first, as a safety check against doing it to the wrong account by mistake.</p>
+    {% endif %}
+    <p><strong>Body Goal</strong> — this isn't just a label. It's fed directly into the
+    prediction models (see Test &gt; Model Components), so the same measurements can genuinely
+    read differently depending on what you're training for, and it drives which tips, streaks,
+    and goal-verdict messages you see everywhere else in the app.</p>
+    <p><strong>Change password</strong> — requires your current password first. Use the eye
+    icon on any password field (here or anywhere else in the app) to check what you've typed
+    before saving.</p>
+  </div>
+</details>
+
+{% if error %}<div class="notice notice--error">{{ error }}</div>{% endif %}
+{% if message %}<div class="notice">{{ message }}</div>{% endif %}
+
+<div class="report-card">
+  <div class="report-card__head">
+    <h2>Appearance</h2>
+  </div>
+  <p class="muted" style="margin-bottom:1rem;">
+    These are shared, site-wide settings &mdash; changing them here updates the look
+    for every account, admin or user, the moment you save.
+  </p>
+
+  <div class="appearance-field">
+    <label for="theme_select">Theme</label>
+    <div class="appearance-options">
+      <select id="theme_select">
+        <option value="light" {% if not global_prefs or global_prefs.theme == 'light' %}selected{% endif %}>Light</option>
+        <option value="dark" {% if global_prefs and global_prefs.theme == 'dark' %}selected{% endif %}>Dark</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="appearance-field">
+    <label for="font_size_select">Font size</label>
+    <div class="appearance-options">
+      <select id="font_size_select">
+        <option value="small"  {% if global_prefs and global_prefs.font_size == 'small' %}selected{% endif %}>Small</option>
+        <option value="medium" {% if not global_prefs or not global_prefs.font_size or global_prefs.font_size == 'medium' %}selected{% endif %}>Medium</option>
+        <option value="large"  {% if global_prefs and global_prefs.font_size == 'large' %}selected{% endif %}>Large</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="appearance-field">
+    <label>Accent color</label>
+    <div class="accent-swatches" id="accentSwatches">
+      {% for c in ['#FF3E00', '#2563EB', '#16A34A', '#7C3AED', '#DB2777', '#D97706'] %}
+      <button type="button" class="accent-swatch {% if global_prefs and global_prefs.accent_color == c %}is-selected{% endif %}"
+              data-color="{{ c }}" style="background:{{ c }};" aria-label="Use {{ c }} as accent color"></button>
+      {% endfor %}
+      <input type="color" id="accent_custom" class="accent-swatch--custom" title="Custom color"
+             value="{{ global_prefs.accent_color if global_prefs and global_prefs.accent_color else '#FF3E00' }}">
+    </div>
+  </div>
+</div>
+
+{% if is_admin %}
+<div class="report-card">
+  <div class="report-card__head">
+    <h2>Account lookup</h2>
+  </div>
+  <p class="muted" style="margin-bottom:1rem;">Look up any account to view its profile or change its body goal.</p>
+  <form method="post" action="{{ url_for('settings_lookup') }}" class="inline-form">
+    <label for="set_id_select">Unique ID</label>
+    <div class="id-picker">
+      <select id="set_id_select" class="id-picker__select" name="unique_id">
+        <option value="">-- Select existing user --</option>
+        {% for u in users %}
+        <option value="{{ u.unique_id }}" {% if user and user.unique_id == u.unique_id %}selected{% endif %}>{{ u.unique_id }} - {{ u.name }}</option>
+        {% endfor %}
+      </select>
+      <input type="text" id="set_id" class="id-picker__manual-input" hidden disabled
+             value="{{ user.unique_id if user else '' }}" placeholder="e.g. 8FA3C1D7">
+      <button type="button" class="id-picker__toggle">Enter ID manually instead</button>
+    </div>
+    <button type="submit" class="btn btn--primary">Look Up</button>
+  </form>
+</div>
+
+{% if user %}
+<div class="report-card">
+  <div class="report-card__head">
+    <h2>{{ user.name }}</h2>
+    <span class="badge" data-user-id="{{ user.unique_id }}">{{ user.unique_id }}</span>
+  </div>
+
+  <form method="post" action="{{ url_for('settings_update') }}" class="stack-form">
+    <input type="hidden" name="unique_id" value="{{ user.unique_id }}">
+
+    <label for="profile_name">Name / Nickname</label>
+    <input type="text" id="profile_name" name="name" value="{{ user.name }}">
+
+    <label for="profile_age">Age</label>
+    <input type="number" id="profile_age" name="age" min="10" max="100" value="{{ user.age }}">
+
+    <label for="profile_gender">Gender</label>
+    <select id="profile_gender" name="gender">
+      <option value="male" {% if user.gender == 'male' %}selected{% endif %}>male</option>
+      <option value="female" {% if user.gender == 'female' %}selected{% endif %}>female</option>
+      <option value="other" {% if user.gender == 'other' %}selected{% endif %}>other</option>
+    </select>
+
+    <label for="body_goal">Body Goal</label>
+    <select id="body_goal" name="body_goal">
+      {% for k, v in BODY_GOALS.items() %}
+      <option value="{{ v }}" {% if user.body_goal == v %}selected{% endif %}>{{ v.replace('_', ' ') }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="btn btn--primary">Save Profile</button>
+  </form>
+</div>
+{% endif %}
+
+<div class="report-card">
+  <div class="report-card__head">
+    <h2>Manage users</h2>
+  </div>
+  <p class="muted" style="margin-bottom:1rem;">
+    Create new user accounts (each needs its own password). Changing an existing
+    account's password or deleting it both require entering that account's
+    current password first, as a safety check.
+  </p>
+
+  <details>
+    <summary>Create a new user</summary>
+    <form method="post" action="{{ url_for('admin_create_user') }}">
+      <label for="admin_new_name">Name / Nickname</label>
+      <input type="text" id="admin_new_name" name="name" placeholder="e.g. Runner_42">
+      <label for="admin_new_age">Age</label>
+      <input type="number" id="admin_new_age" name="age" min="10" max="100" placeholder="30">
+      <label for="admin_new_gender">Gender</label>
+      <select id="admin_new_gender" name="gender">
+        <option value="male">male</option>
+        <option value="female">female</option>
+        <option value="other">other</option>
+      </select>
+      <label for="admin_new_goal">Fitness goal</label>
+      <select id="admin_new_goal" name="body_goal">
+        {% for k, v in BODY_GOALS.items() %}
+        <option value="{{ v }}">{{ v.replace('_', ' ') }}</option>
+        {% endfor %}
+      </select>
+      <label for="admin_new_password">Account password</label>
+      <input type="password" id="admin_new_password" name="password" placeholder="Set a password for this user"
+             data-pw-policy="1" required>
+      <label for="admin_new_password_confirm">Confirm password</label>
+      <input type="password" id="admin_new_password_confirm" name="confirm_password" data-match="admin_new_password"
+             placeholder="Re-enter the password" required>
+      <button class="btn btn--primary" type="submit">Create User</button>
+    </form>
+  </details>
+
+  {% if all_users %}
+  <div style="margin-top:1.2rem;">
+    {% for u in all_users %}
+    <details class="admin-user-row-detail">
+      <summary class="admin-user-row">
+        <span class="badge" data-user-id="{{ u.unique_id }}">{{ u.unique_id }}</span> {{ u.name }}
+      </summary>
+      <div class="admin-user-row-body">
+        <form method="post" action="{{ url_for('admin_reset_password') }}" class="stack-form">
+          <input type="hidden" name="unique_id" value="{{ u.unique_id }}">
+          <label for="reset_current_pw_{{ u.unique_id }}">{{ u.name }}'s current password (required to change it)</label>
+          <input type="password" id="reset_current_pw_{{ u.unique_id }}" name="current_password"
+                 placeholder="Enter this account's current password" required>
+          <label for="reset_pw_{{ u.unique_id }}">New password</label>
+          <input type="password" id="reset_pw_{{ u.unique_id }}" name="new_password"
+                 data-pw-policy="1"
+                 placeholder="New password for {{ u.name }}" required>
+          <label for="reset_pw_confirm_{{ u.unique_id }}">Confirm new password</label>
+          <input type="password" id="reset_pw_confirm_{{ u.unique_id }}" name="confirm_new_password"
+                 data-match="reset_pw_{{ u.unique_id }}" placeholder="Re-enter the new password" required>
+          <button type="submit" class="btn" style="font-size:.7rem;padding:.4rem .8rem;">Set Password</button>
+        </form>
+
+        <form method="post" action="{{ url_for('admin_delete_user') }}" class="stack-form"
+              style="margin-top:1rem;"
+              onsubmit="return confirm('Permanently delete {{ u.name }} ({{ u.unique_id }}) and all of their data?');">
+          <input type="hidden" name="unique_id" value="{{ u.unique_id }}">
+          <label for="delete_pw_{{ u.unique_id }}">{{ u.name }}'s password (required to delete)</label>
+          <input type="password" id="delete_pw_{{ u.unique_id }}" name="password"
+                 placeholder="Enter this account's password" required>
+          <button type="submit" class="btn" style="font-size:.7rem;padding:.4rem .8rem;">Delete Account</button>
+        </form>
+      </div>
+    </details>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="muted" style="margin-top:1rem;">No user accounts yet.</p>
+  {% endif %}
+</div>
+
+{% else %}
+<div class="report-card">
+  <div class="report-card__head">
+    <h2>Your profile</h2>
+  </div>
+  <p class="muted">You're editing your own account. Changes here apply only to you.</p>
+</div>
+
+{% if user %}
+<div class="report-card">
+  <div class="report-card__head">
+    <h2>{{ user.name }}</h2>
+    <span class="badge" data-user-id="{{ user.unique_id }}">{{ user.unique_id }}</span>
+  </div>
+
+  <form method="post" action="{{ url_for('settings_update') }}" class="stack-form">
+    <input type="hidden" name="unique_id" value="{{ user.unique_id }}">
+
+    <label for="profile_name">Name / Nickname</label>
+    <input type="text" id="profile_name" name="name" value="{{ user.name }}">
+
+    <label for="profile_age">Age</label>
+    <input type="number" id="profile_age" name="age" min="10" max="100" value="{{ user.age }}">
+
+    <label for="profile_gender">Gender</label>
+    <select id="profile_gender" name="gender">
+      <option value="male" {% if user.gender == 'male' %}selected{% endif %}>male</option>
+      <option value="female" {% if user.gender == 'female' %}selected{% endif %}>female</option>
+      <option value="other" {% if user.gender == 'other' %}selected{% endif %}>other</option>
+    </select>
+
+    <label for="body_goal">Body Goal</label>
+    <select id="body_goal" name="body_goal">
+      {% for k, v in BODY_GOALS.items() %}
+      <option value="{{ v }}" {% if user.body_goal == v %}selected{% endif %}>{{ v.replace('_', ' ') }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="btn btn--primary">Save Profile</button>
+  </form>
+</div>
+
+<div class="report-card">
+  <div class="report-card__head">
+    <h2>Change password</h2>
+  </div>
+  <p class="muted" style="margin-bottom:1rem;">Use the eye icon to check what you've typed before saving.</p>
+  <form method="post" action="{{ url_for('settings_change_password') }}" class="stack-form">
+    <label for="current_password">Current password</label>
+    <input type="password" id="current_password" name="current_password" placeholder="Your current password" required>
+
+    <label for="new_password">New password</label>
+    <input type="password" id="new_password" name="new_password" placeholder="Choose a new password"
+           data-pw-policy="1" required>
+
+    <label for="confirm_new_password">Confirm new password</label>
+    <input type="password" id="confirm_new_password" name="confirm_new_password" data-match="new_password"
+           placeholder="Re-enter the new password" required>
+
+    <button type="submit" class="btn btn--primary">Update Password</button>
+  </form>
+</div>
+{% endif %}
+{% endif %}
+{% endblock %}

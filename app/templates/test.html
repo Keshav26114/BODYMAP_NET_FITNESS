@@ -1,0 +1,404 @@
+{% extends "base.html" %}
+{% block title %}BodyMap Net — Test{% endblock %}
+
+{% block content %}
+<p class="eyebrow">// Run a test</p>
+<h1 class="page-title">Test Console</h1>
+
+<details class="about-block reveal">
+  <summary>Model components</summary>
+  <div class="about-block__body">
+    <p>Five small neural networks work together, and every one of them now also takes your
+    <strong>stated goal</strong> as an input, not just your measurements:</p>
+    <ul>
+      <li><strong>Exercise</strong> — weekly sets per muscle group &rarr; Under-training /
+      Balanced / Over-training.</li>
+      <li><strong>BMI</strong> — height, weight, age, gender &rarr; Underweight / Normal /
+      Overweight / Obese.</li>
+      <li><strong>Body Fat</strong> — neck, waist (and hip) measurements &rarr; a five-band
+      body-fat read from Essential to Obese.</li>
+      <li><strong>Ideal Calories</strong> — activity level and current intake &rarr;
+      Under-eating / On-target / Over-eating relative to your Mifflin-St Jeor target.</li>
+      <li><strong>Behaviour Profile (fusion)</strong> — combines whichever of the four
+      embeddings you produced, using a learned placeholder for any test you skipped rather
+      than a zero, so it degrades gracefully with 1, 2, 3, or 4 tests present. Your goal is
+      concatenated in right before the final decision, so the same body composition can
+      genuinely be classified differently depending on what you're training for.</li>
+    </ul>
+    <p>The individual bands (BMI, body fat, calories, exercise) still reflect objective
+    physical thresholds — Overweight is Overweight regardless of your goal. It's the
+    Behaviour Profile, and the tips/streaks built on top of these results, that judge
+    each result <em>relative to your goal</em>.</p>
+  </div>
+</details>
+
+{% if error %}
+<div class="notice notice--error">{{ error }}</div>
+{% endif %}
+{% if message %}
+<div class="notice">{{ message }}</div>
+{% endif %}
+
+{% if not user %}
+    <!-- Reached only by an admin (logged-in users are auto-routed to their own account). -->
+    <p class="privacy">
+        Signed in as <strong>Admin</strong>. Pick an existing account below to run or retake
+        a test on their behalf, or register a brand-new account.
+    </p>
+    <div class="card-grid">
+        <div class="panel">
+            <details>
+                <summary>New User</summary>
+                <form method="POST" action="{{ url_for('test_register') }}">
+                    <label for="name">Name / Nickname</label>
+                    <input type="text" id="name" name="name" placeholder="e.g. Runner_42">
+                    <label for="age">Age</label>
+                    <input type="number" id="age" name="age" min="10" max="100" placeholder="30">
+                    <label for="gender">Gender</label>
+                    <select id="gender" name="gender">
+                        <option value="male">male</option>
+                        <option value="female">female</option>
+                        <option value="other">other</option>
+                    </select>
+                    <label for="body_goal">Fitness goal</label>
+                    <select id="body_goal" name="body_goal">
+                        {% for k, v in BODY_GOALS.items() %}
+                        <option value="{{ v }}">{{ v.replace('_', ' ') }}</option>
+                        {% endfor %}
+                    </select>
+                    <label for="password">Account password</label>
+                    <input type="password" id="password" name="password" placeholder="Set a password for this user" required>
+                    <label for="password_confirm">Confirm password</label>
+                    <input type="password" id="password_confirm" name="confirm_password" data-match="password"
+                           placeholder="Re-enter the password" required>
+                    <button class="btn btn--primary" type="submit">Register</button>
+                </form>
+            </details>
+        </div>
+        <div class="panel">
+            <details>
+                <summary>Existing User</summary>
+                <form method="POST" action="{{ url_for('test_lookup') }}">
+                    <label for="unique_id_select">Account</label>
+                    <div class="id-picker">
+                        <select id="unique_id_select" class="id-picker__select" name="unique_id">
+                            <option value="">-- Select existing user --</option>
+                            {% for u in users %}
+                            <option value="{{ u.unique_id }}">{{ u.unique_id }} - {{ u.name }}</option>
+                            {% endfor %}
+                        </select>
+                        <input type="text" id="unique_id" class="id-picker__manual-input" hidden disabled
+                               placeholder="e.g. K3F9QX2P" maxlength="8">
+                        <button type="button" class="id-picker__toggle">Enter ID manually instead</button>
+                    </div>
+                    <button class="btn" type="submit">Look up</button>
+                </form>
+            </details>
+        </div>
+    </div>
+{% else %}
+    <!-- After register / lookup: choose tests -->
+    {% if new_id %}
+    <div class="panel panel--surface">
+        <label>Your new unique ID &mdash; save it!</label>
+        <span class="id-chip">{{ new_id }}</span>
+    </div>
+    {% endif %}
+
+    <div class="panel">
+        <p style="font-size:.8rem;text-transform:uppercase;letter-spacing:.1em;opacity:.6;">
+            {% if auth_role == 'admin' %}Testing on behalf of{% else %}Signed in as{% endif %}
+            {{ user.name }} &middot; {{ user.gender }} &middot; age {{ user.age }}
+            &middot; goal: {{ user.body_goal.replace('_', ' ') }}
+        </p>
+    </div>
+
+    {% set weeks_autofill = weeks_autofill if weeks_autofill is defined else [] %}
+    {% if weeks_autofill %}
+    <div class="autofill-block">
+        <div class="week-picker-header">
+            <span class="eyebrow" style="margin:0;">Autofill</span>
+            <span class="week-picker-label">Copy a previous week</span>
+        </div>
+        <div class="autofill-controls">
+            <select id="autofillWeekSelect" class="autofill-select">
+                <option value="">-- Select a previously filled week --</option>
+            </select>
+            <button type="button" id="autofillClear" class="btn btn-week" hidden>Clear</button>
+        </div>
+        <p class="week-hint">
+            Pick a week you've already filled in to load the same answers here &mdash;
+            exercise sets and any measurements you entered &mdash; instead of typing them
+            again. You can still edit anything before submitting.
+        </p>
+    </div>
+    <script type="application/json" id="weeksAutofillData">{{ weeks_autofill | tojson }}</script>
+    {% endif %}
+
+    <form method="POST" action="{{ url_for('test_submit') }}">
+        <input type="hidden" name="unique_id" value="{{ user.unique_id }}">
+
+        <fieldset>
+            <legend>Select tests</legend>
+            <div class="checkbox-row">
+                <input type="checkbox" id="chk_exercise" name="tests" value="exercise" class="test-toggle" data-target="exercise">
+                <label for="chk_exercise">Exercise Test</label>
+            </div>
+            <div class="checkbox-row">
+                <input type="checkbox" id="chk_bmi" name="tests" value="bmi" class="test-toggle" data-target="bmi">
+                <label for="chk_bmi">BMI Test</label>
+            </div>
+            <div class="checkbox-row">
+                <input type="checkbox" id="chk_bodyfat" name="tests" value="bodyfat" class="test-toggle" data-target="bodyfat">
+                <label for="chk_bodyfat">Body Fat Test</label>
+            </div>
+            <div class="checkbox-row">
+                <input type="checkbox" id="chk_calories" name="tests" value="calories" class="test-toggle" data-target="calories">
+                <label for="chk_calories">Ideal Calorie Test</label>
+            </div>
+            <div class="checkbox-row">
+                <input type="checkbox" id="chk_fusion" name="used_inference">
+                <label for="chk_fusion">Also run Behaviour Profile (AI)</label>
+            </div>
+        </fieldset>
+
+        <!-- Exercise fieldset -->
+        <div class="test-section" data-test="exercise" hidden>
+            <fieldset>
+                <legend>Exercise Test</legend>
+                <p class="exercise-hint">
+                    Enter <strong>sets performed this week</strong> per exercise &mdash; all fields optional.
+                    Sets for the same muscle group are summed. Weekly baselines are used for red/yellow/green scoring,
+                    calibrated to a realistic <strong>12&ndash;36 sets per body part per week</strong>
+                    (e.g. a typical Chest week &asymp; <strong>22 sets total</strong>). Cardio is
+                    scored the same way but on a much smaller <strong>sessions per week</strong> scale
+                    &mdash; a normal week is roughly <strong>2&ndash;6 sessions total</strong>, not sets.
+                </p>
+                {% for group in EXERCISE_GROUPS %}
+                <div class="exercise-group">
+                    <h4>{{ group }} <span class="group-sets-total" id="total_{{ group | replace(' ', '_') }}" style="font-size:.75rem;font-weight:400;opacity:.5;margin-left:.5rem;">0 {{ "sessions" if group == "Cardio" else "sets" }}</span></h4>
+                    <div class="field-grid">
+                        {% for ex in EXERCISES if ex.group == group %}
+                        <div>
+                            <label for="ex_{{ ex.id }}">{{ ex.name }}</label>
+                            <input type="number" step="1" min="0" id="ex_{{ ex.id }}" name="ex_{{ ex.id }}"
+                                   placeholder="{{ ex.unit }}" data-group="{{ group | replace(' ', '_') }}" data-baseline="{{ ex.baseline }}"
+                                   class="ex-sets-input" data-validator="exercise_sets">
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endfor %}
+            </fieldset>
+        </div>
+
+        <!-- BMI fieldset -->
+        <div class="test-section" data-test="bmi" hidden>
+            <fieldset>
+                <legend>BMI Test</legend>
+                <div class="field-grid">
+                    <div>
+                        <label for="bmi_height_cm">
+                            Height (cm) <span style="color:var(--safety);">*</span>
+                            <span class="field-status" id="status_bmi_height_cm"></span>
+                        </label>
+                        <input type="number" step="0.1" min="140" max="230" id="bmi_height_cm" name="bmi_height_cm" 
+                               placeholder="required" required data-prefs-field="avg_height_cm" data-validator="bmi_height_cm">
+                    </div>
+                    <div>
+                        <label for="bmi_weight_kg">
+                            Weight (kg)
+                            <span class="field-status" id="status_bmi_weight_kg"></span>
+                        </label>
+                        <input type="number" step="0.1" min="0" id="bmi_weight_kg" name="bmi_weight_kg" 
+                               placeholder="optional" data-prefs-field="avg_weight_kg" data-validator="bmi_weight_kg">
+                    </div>
+                </div>
+            </fieldset>
+        </div>
+
+        <!-- Body Fat fieldset -->
+        <div class="test-section" data-test="bodyfat" hidden>
+            <fieldset>
+                <legend>Body Fat Test</legend>
+                <div class="field-grid">
+                    <div>
+                        <label for="bf_neck_cm">
+                            Neck (cm)
+                            <span class="field-status" id="status_bf_neck_cm"></span>
+                        </label>
+                        <input type="number" step="0.1" min="0" id="bf_neck_cm" name="bf_neck_cm" 
+                               placeholder="optional" data-prefs-field="avg_neck_cm" data-validator="bf_neck_cm" data-gender="{{ user.gender }}">
+                    </div>
+                    <div>
+                        <label for="bf_waist_cm">
+                            Waist (cm)
+                            <span class="field-status" id="status_bf_waist_cm"></span>
+                        </label>
+                        <input type="number" step="0.1" min="0" id="bf_waist_cm" name="bf_waist_cm" 
+                               placeholder="optional" data-prefs-field="avg_waist_cm" data-validator="bf_waist_cm" data-gender="{{ user.gender }}">
+                    </div>
+                    {% if user.gender == "female" %}
+                    <div>
+                        <label for="bf_hip_cm">
+                            Hip (cm)
+                            <span class="field-status" id="status_bf_hip_cm"></span>
+                        </label>
+                        <input type="number" step="0.1" min="0" id="bf_hip_cm" name="bf_hip_cm" 
+                               placeholder="optional" data-prefs-field="avg_hip_cm" data-validator="bf_hip_cm" data-gender="female">
+                    </div>
+                    {% endif %}
+                </div>
+            </fieldset>
+        </div>
+
+        <!-- Calorie fieldset -->
+        <div class="test-section" data-test="calories" hidden>
+            <fieldset>
+                <legend>Ideal Calorie Test</legend>
+                <div class="field-grid">
+                    <div>
+                        <label for="cal_activity_level">Activity level</label>
+                        <select id="cal_activity_level" name="cal_activity_level" data-prefs-field="avg_activity_level" data-validator="cal_activity_level">
+                            {% for k, v in ACTIVITY_LEVELS.items() %}
+                            <option value="{{ v }}" {% if v == 'moderate' %}selected{% endif %}>{{ v.replace('_', ' ') }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label for="cal_current_intake">
+                            Current daily intake (kcal)
+                            <span class="field-status" id="status_cal_current_intake"></span>
+                        </label>
+                        <input type="number" step="1" min="0" id="cal_current_intake" name="cal_current_intake" 
+                               placeholder="optional" data-prefs-field="avg_current_intake" data-validator="cal_current_intake">
+                    </div>
+                </div>
+            </fieldset>
+        </div>
+
+        <!-- Week picker (optional — lets users enter past weeks) -->
+        <div class="week-picker-block">
+            <div class="week-picker-header">
+                <span class="eyebrow" style="margin:0;">Week (optional)</span>
+                <span class="week-picker-label" id="weekLabel">Current week</span>
+            </div>
+            <div class="week-picker-controls">
+                <button type="button" id="weekPrev" class="btn btn-week" aria-label="Previous week">&larr;</button>
+                <span class="week-range-display" id="weekRange"></span>
+                <button type="button" id="weekNext" class="btn btn-week" aria-label="Next week">&rarr;</button>
+            </div>
+            <input type="hidden" id="week_start" name="week_start" value="">
+            <input type="hidden" id="week_end" name="week_end" value="">
+            <p class="week-hint">Exercise sets are logged per week. Navigate to a past week to enter historical data.</p>
+        </div>
+
+        <button class="btn btn--primary" type="submit">Run selected tests</button>
+    </form>
+
+    <script>
+        // ---- Test section toggling ----
+        document.querySelectorAll(".test-toggle").forEach(function (chk) {
+            chk.addEventListener("change", function () {
+                var section = document.querySelector('.test-section[data-test="' + chk.dataset.target + '"]');
+                if (section) section.hidden = !chk.checked;
+                updateFusionState();
+            });
+        });
+
+        var fusionChk = document.getElementById("chk_fusion");
+        function updateFusionState() {
+            var anyChecked = Array.from(document.querySelectorAll(".test-toggle")).some(function (c) { return c.checked; });
+            fusionChk.disabled = !anyChecked;
+            if (!anyChecked) fusionChk.checked = false;
+        }
+        updateFusionState();
+
+        // ---- Live group-sets counter ----
+        function updateGroupTotal(groupKey) {
+            var inputs = document.querySelectorAll('.ex-sets-input[data-group="' + groupKey + '"]');
+            var total = 0;
+            inputs.forEach(function (inp) {
+                var v = parseFloat(inp.value);
+                if (!isNaN(v) && v > 0) total += v;
+            });
+            var unit = groupKey === "Cardio" ? " sessions" : " sets";
+            var lbl = document.getElementById("total_" + groupKey);
+            if (lbl) lbl.textContent = total > 0 ? total + unit : "0" + unit;
+        }
+
+        document.querySelectorAll(".ex-sets-input").forEach(function (inp) {
+            inp.addEventListener("input", function () {
+                updateGroupTotal(inp.dataset.group);
+            });
+        });
+
+        // ---- Week picker ----
+        (function () {
+            var weekOffset = 0; // 0 = current week, -1 = last week, etc.
+
+            function getMonday(d) {
+                var day = d.getDay();
+                var diff = (day === 0) ? -6 : 1 - day;  // adjust to Monday
+                var monday = new Date(d);
+                monday.setDate(d.getDate() + diff);
+                monday.setHours(0, 0, 0, 0);
+                return monday;
+            }
+
+            function formatDate(d) {
+                var y = d.getFullYear();
+                var m = String(d.getMonth() + 1).padStart(2, "0");
+                var day = String(d.getDate()).padStart(2, "0");
+                return y + "-" + m + "-" + day;
+            }
+
+            function formatDisplay(d) {
+                return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+            }
+
+            function renderWeek() {
+                var today = new Date();
+                var baseMonday = getMonday(today);
+                var monday = new Date(baseMonday);
+                monday.setDate(baseMonday.getDate() + weekOffset * 7);
+                var sunday = new Date(monday);
+                sunday.setDate(monday.getDate() + 6);
+
+                var startISO = formatDate(monday);
+                var endISO = formatDate(sunday);
+
+                document.getElementById("week_start").value = startISO;
+                document.getElementById("week_end").value = endISO;
+                document.getElementById("weekRange").textContent = formatDisplay(monday) + " \u2013 " + formatDisplay(sunday);
+
+                var isCurrentWeek = weekOffset === 0;
+                var label = isCurrentWeek ? "Current week" : (weekOffset === -1 ? "Last week" : weekOffset + " weeks ago");
+                document.getElementById("weekLabel").textContent = label;
+
+                // Disable next button if already at current week
+                document.getElementById("weekNext").disabled = weekOffset >= 0;
+                document.getElementById("weekNext").style.opacity = weekOffset >= 0 ? "0.3" : "1";
+            }
+
+            document.getElementById("weekPrev").addEventListener("click", function () {
+                weekOffset -= 1;
+                renderWeek();
+            });
+            document.getElementById("weekNext").addEventListener("click", function () {
+                if (weekOffset < 0) {
+                    weekOffset += 1;
+                    renderWeek();
+                }
+            });
+
+            renderWeek();
+        })();
+    </script>
+{% endif %}
+
+<script src="{{ url_for('static', filename='js/theme.js') }}"></script>
+<script src="{{ url_for('static', filename='js/validators.js') }}"></script>
+<script src="{{ url_for('static', filename='js/autofill.js') }}"></script>
+<script src="{{ url_for('static', filename='js/week_autofill.js') }}"></script>
+{% endblock %}
