@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}All Users{% endblock %}
+{% block content %}
+<section class="page-head reveal">
+  <p class="eyebrow">Account &middot; Admin</p>
+  <h1 class="page-title">All Users</h1>
+  <p class="muted">
+    Every registered profile, with the detail that doesn't fit on the Settings page's
+    compact grid. <a href="{{ url_for('settings') }}" class="link">&larr; Back to Settings</a>
+  </p>
+</section>
+
+<div class="report-card">
+  <div class="report-card__head admin-users-head">
+    <h2>{{ all_users_full | length }} profile{{ 's' if all_users_full | length != 1 else '' }}</h2>
+    <div class="admin-users-tools">
+      <input type="search" id="allUsersSearch" class="admin-user-search"
+             placeholder="Search name or ID&hellip;" aria-label="Search users">
+    </div>
+  </div>
+
+  {% if all_users_full %}
+  <div class="all-users-table-wrap">
+    <table id="allUsersTable">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Name</th>
+          <th>Age</th>
+          <th>Gender</th>
+          <th>Body Goal</th>
+          <th>Weeks Logged</th>
+          <th>Joined</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in all_users_full %}
+        <tr data-search="{{ (u.unique_id ~ ' ' ~ u.name) | lower }}">
+          <td><span class="badge" data-user-id="{{ u.unique_id }}">{{ u.unique_id }}</span></td>
+          <td>{{ u.name }}</td>
+          <td>{{ u.age }}</td>
+          <td>{{ u.gender }}</td>
+          <td>{{ u.body_goal.replace('_', ' ') }}</td>
+          <td>{{ u.run_count }}</td>
+          <td>{{ u.created_at }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="admin-user-search-empty muted" id="allUsersSearchEmpty" hidden>No users match that search.</p>
+  {% else %}
+  <p class="muted">No user accounts yet.</p>
+  {% endif %}
+</div>
+
+<script>
+(function () {
+  var search = document.getElementById("allUsersSearch");
+  var table = document.getElementById("allUsersTable");
+  var empty = document.getElementById("allUsersSearchEmpty");
+  if (!search || !table) return;
+
+  var rows = Array.prototype.slice.call(table.querySelectorAll("tbody tr"));
+
+  search.addEventListener("input", function () {
+    var q = search.value.trim().toLowerCase();
+    var anyVisible = false;
+    rows.forEach(function (row) {
+      var match = !q || row.dataset.search.indexOf(q) !== -1;
+      row.hidden = !match;
+      if (match) anyVisible = true;
+    });
+    if (empty) empty.hidden = anyVisible;
+    table.hidden = !anyVisible && !!q;
+  });
+})();
+</script>
+{% endblock %}

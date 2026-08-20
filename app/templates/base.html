@@ -1,0 +1,165 @@
+{% set _appearance = global_prefs if (global_prefs is defined and global_prefs) else {'theme':'light','font_size':'medium','accent_color':'#FF3E00'} %}
+<!DOCTYPE html>
+<html lang="en"
+      data-user-theme="{{ _appearance.theme }}"
+      data-font-size="{{ _appearance.font_size }}"
+      style="--accent: {{ _appearance.accent_color }};"
+      {% if prefs %}
+        data-avg-height-cm="{{ prefs.avg_height_cm }}"
+        data-avg-weight-kg="{{ prefs.avg_weight_kg }}"
+        data-avg-neck-cm="{{ prefs.avg_neck_cm }}"
+        data-avg-waist-cm="{{ prefs.avg_waist_cm }}"
+        data-avg-hip-cm="{{ prefs.avg_hip_cm }}"
+        data-avg-activity-level="{{ prefs.avg_activity_level }}"
+        data-avg-current-intake="{{ prefs.avg_current_intake }}"
+        data-avg-exercise-sets-total="{{ prefs.avg_exercise_sets_total }}"
+      {% endif %}>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}BodyMap Net{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/print.css') }}" media="print">
+</head>
+<body>
+    <header class="header">
+        <div class="header__inner">
+            <a class="header__logo" href="{{ url_for('home') }}">
+                <span class="header__logo-mark">BM</span>
+                BodyMap&nbsp;Net <span class="sub">/ predictor</span>
+            </a>
+
+            <!-- UTC clock — updated by axis-script.js -->
+            <span id="utcClock" class="header__clock" aria-live="off" aria-label="UTC time"></span>
+
+            <!-- Burger (mobile only) -->
+            <button id="headerBurger" class="header__burger" aria-label="Toggle navigation" aria-expanded="false">
+                <span></span><span></span><span></span>
+            </button>
+
+            <nav id="headerNav" class="header__nav">
+                <a href="{{ url_for('home') }}">Home</a>
+                {% if auth_role %}
+                <a href="{{ url_for('test') }}">Test</a>
+                <a href="{{ url_for('history') }}">History</a>
+                <a href="{{ url_for('settings') }}">Settings</a>
+
+                {% if streak_info %}
+                <span class="header__streak" title="Current / Best streak">
+                    {{ streak_info.current }}&thinsp;/&thinsp;{{ streak_info.best }}
+                </span>
+                {% endif %}
+
+                <span class="header__auth-badge" title="Signed in">
+                    {% if auth_role == 'admin' %}Admin{% if auth_admin_username %} &middot; {{ auth_admin_username }}{% endif %}
+                    {% else %}{{ auth_name or auth_unique_id }}{% endif %}
+                </span>
+                <form method="post" action="{{ url_for('logout') }}" class="header__logout-form">
+                    <button type="submit" class="header__login-btn">Log out</button>
+                </form>
+                {% else %}
+                <button type="button" id="headerLoginBtn" class="header__login-btn header__login-btn--primary">Log in</button>
+                {% endif %}
+            </nav>
+        </div>
+    </header>
+
+    {% if not auth_role %}
+    <div id="loginOverlay" class="login-overlay" hidden data-initial-tab="{{ request.args.get('tab', 'user') }}">
+        <div class="login-modal" role="dialog" aria-modal="true" aria-label="Log in">
+            <button type="button" id="loginCloseBtn" class="login-modal__close" aria-label="Close login dialog">&times;</button>
+
+            <div class="login-tabs" role="tablist">
+                <button type="button" class="login-tab is-active" data-panel="user" role="tab" aria-selected="true">Login as User</button>
+                <button type="button" class="login-tab" data-panel="admin" role="tab" aria-selected="false">Login as Admin</button>
+            </div>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+              {% if messages %}
+                {% for category, msg in messages %}
+                <div class="notice {% if category == 'error' %}notice--error{% endif %}" style="margin:0 0 1rem;">{{ msg }}</div>
+                {% endfor %}
+              {% endif %}
+            {% endwith %}
+
+            <div class="login-panel" data-panel="user">
+                <form method="post" action="{{ url_for('login_user') }}">
+                    <label for="login_unique_id_select">Your account</label>
+                    <div class="id-picker">
+                        <select id="login_unique_id_select" class="id-picker__select" name="unique_id">
+                            <option value="">-- Select your account --</option>
+                            {% for u in login_users %}
+                            <option value="{{ u.unique_id }}">{{ u.unique_id }} - {{ u.name }}</option>
+                            {% endfor %}
+                        </select>
+                        <input type="text" id="login_unique_id_manual" class="id-picker__manual-input" hidden disabled
+                               placeholder="e.g. K3F9QX2P" maxlength="8">
+                        <button type="button" class="id-picker__toggle">Enter ID manually instead</button>
+                    </div>
+                    <label for="login_user_password">Password</label>
+                    <input type="password" id="login_user_password" name="password" placeholder="Your password" required>
+                    <button class="btn btn--primary" type="submit" style="margin-top:.8rem;">Log in</button>
+                </form>
+            </div>
+
+            <div class="login-panel" data-panel="admin" hidden>
+                <form method="post" action="{{ url_for('login_admin') }}">
+                    <label for="login_admin_password">Admin password</label>
+                    <input type="password" id="login_admin_password" name="password" placeholder="Admin password" required>
+                    <button class="btn btn--primary" type="submit" style="margin-top:.8rem;">Log in as Admin</button>
+                </form>
+                <details class="login-create-admin">
+                    <summary>Create a new admin account</summary>
+                    <p class="muted" style="margin-bottom:.6rem;">Requires an existing admin's password — anyone could
+                        otherwise grant themselves admin access.</p>
+                    <form method="post" action="{{ url_for('login_admin_create') }}">
+                        <label for="current_admin_password_for_create">Current admin password</label>
+                        <input type="password" id="current_admin_password_for_create" name="current_admin_password"
+                               placeholder="An existing admin's password" required>
+                        <label for="new_admin_username">Username</label>
+                        <input type="text" id="new_admin_username" name="username" placeholder="Choose a username" required>
+                        <label for="new_admin_password">Password</label>
+                        <input type="password" id="new_admin_password" name="password" placeholder="Choose a password"
+                               data-pw-policy="1" required>
+                        <button class="btn" type="submit" style="margin-top:.8rem;">Create Admin Account</button>
+                    </form>
+                </details>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <main>
+        {% if auth_role %}
+          {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+              {% for category, msg in messages %}
+              <div class="notice {% if category == 'error' %}notice--error{% endif %}">{{ msg }}</div>
+              {% endfor %}
+            {% endif %}
+          {% endwith %}
+        {% endif %}
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Back to top button -->
+    <button id="backToTop" class="back-to-top" aria-label="Back to top" title="Back to top">&#8679;</button>
+
+    <footer class="footer">
+        <div class="footer__inner">
+            <span class="footer__logo font-display">BodyMap Net</span>
+            <small>Demonstration project &middot; PyTorch &middot; Django &middot; SQLite &middot; Matplotlib</small>
+        </div>
+    </footer>
+
+    <script src="{{ url_for('static', filename='js/axis-script.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/appearance.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/autofill.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/id_picker.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/login.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/password_toggle.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/password_strength.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/password_confirm.js') }}"></script>
+</body>
+</html>

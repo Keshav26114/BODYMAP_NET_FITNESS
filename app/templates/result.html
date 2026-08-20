@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+{% block title %}Test Results{% endblock %}
+{% block content %}
+{% if goal_verdict %}
+<div class="goal-verdict goal-verdict--{{ goal_verdict.status }} reveal">
+  <span class="goal-verdict__icon" aria-hidden="true"></span>
+  <p class="goal-verdict__text">{{ goal_verdict.message }}</p>
+</div>
+{% endif %}
+<section class="page-head reveal">
+  <p class="eyebrow">Report / Run #{{ run.run_id }}</p>
+  <h1 class="page-title">Assessment Results</h1>
+  <p class="muted">{{ run.run_at }} &middot; ID <strong>{{ run.unique_id }}</strong></p>
+</section>
+
+<div class="report-actions no-print reveal">
+  <button type="button" onclick="window.print()" class="btn btn--primary">Print / Save PDF</button>
+  <a href="{{ url_for('history') }}" class="btn">Back to History</a>
+</div>
+
+{# ---- Coaching Insights ---- #}
+{% if user_insights %}
+<div class="insights-panel no-print reveal">
+  <p class="insights__title">// Coaching Insights &mdash; {{ user_insights | length }} recommendation{{ 's' if user_insights | length != 1 else '' }}</p>
+  <div class="insights-grid">
+    {% for insight in user_insights %}
+    <div class="insight-badge insight-badge--{{ insight.type }} reveal">
+      {% if insight.title %}<p class="insight-badge__title">{{ insight.title }}</p>{% endif %}
+      <p class="insight-badge__text">{{ insight.text }}</p>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% include "_streaks.html" %}
+
+{# ---- Exercise ---- #}
+{% if run.exercise_result_json %}
+<div class="report-card reveal">
+  <div class="report-card__head">
+    <h2>Exercise &mdash; Training Adequacy</h2>
+    <span class="badge">{{ run.exercise_result_json.label }}</span>
+  </div>
+  <p class="muted">Confidence: <strong>{{ (run.exercise_result_json.confidence * 100) | round(1) }}%</strong></p>
+
+  {% set group_totals = run.exercise_inputs_json.group_totals if run.exercise_inputs_json else {} %}
+  {% set group_scores = run.exercise_result_json.group_scores if run.exercise_result_json else {} %}
+
+  <div class="entered-values">
+    <p class="entered-values__title">Weekly sets by muscle group</p>
+    <table class="entered-table group-table">
+      <thead>
+        <tr>
+          <th>Group</th>
+          <th style="text-align:right;">Sets</th>
+          <th>Progress vs Baseline</th>
+          <th style="text-align:right;">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for group in EXERCISE_GROUPS %}
+        {% set total = group_totals.get(group, 0) %}
+        {% set ratio = group_scores.get(group, 0.0) %}
+        {% set pct = [[(ratio * 100) | round(0) | int, 0] | max, 100] | min %}
+        {% if ratio >= 1.0 %}
+          {% set status_cls = "status-ok" %}{% set status_lbl = "On track" %}{% set bar_color = "#007700" %}
+        {% elif ratio >= 0.5 %}
+          {% set status_cls = "status-low" %}{% set status_lbl = "Light" %}{% set bar_color = "#996600" %}
+        {% elif total > 0 %}
+          {% set status_cls = "status-warn" %}{% set status_lbl = "Very light" %}{% set bar_color = "#cc4400" %}
+        {% else %}
+          {% set status_cls = "status-skip" %}{% set status_lbl = "Not trained" %}{% set bar_color = "#888888" %}
+        {% endif %}
+        <tr>
+          <td>{{ group }}</td>
+          <td class="val">{{ total | int }}</td>
+          <td>
+            <div class="bar-track">
+              <div class="bar-track__fill" style="width:{{ pct }}%; background:{{ bar_color }};"></div>
+            </div>
+            <span style="font-size:0.65rem; opacity:0.6;">{{ pct }}%</span>
+          </td>
+          <td><span class="group-status-badge {{ status_cls }}">{{ status_lbl }}</span></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% if run.exercise_inputs_json and run.exercise_inputs_json.per_exercise %}
+    <details class="ex-breakdown-details">
+      <summary>Per-exercise breakdown</summary>
+      <table class="entered-table" style="margin-top:.4rem;">
+        {% for name, info in run.exercise_inputs_json.per_exercise.items() %}
+        <tr>
+          <td>{{ name }}</td>
+          <td style="opacity:0.5; font-size:0.72rem;">{{ info.group }}</td>
+          <td class="val">{{ info.sets | int }} sets</td>
+        </tr>
+        {% endfor %}
+      </table>
+    </details>
+    {% endif %}
+  </div>
+  {% if charts.exercise %}
+  <img class="chart reveal" src="data:image/png;base64,{{ charts.exercise }}" alt="Exercise group ratios chart">
+  {% endif %}
+</div>
+{% endif %}
+
+{# ---- BMI ---- #}
+{% if run.bmi_result_json %}
+<div class="report-card reveal">
+  <div class="report-card__head">
+    <h2>BMI</h2>
+    <span class="badge">{{ run.bmi_result_json.label }}</span>
+  </div>
+  {% if run.bmi_result_json.bmi_value is not none %}
+  <p class="muted">BMI: <strong>{{ run.bmi_result_json.bmi_value | round(1) }}</strong> &middot; Confidence: {{ (run.bmi_result_json.confidence * 100) | round(1) }}%</p>
+  {% if run.bmi_result_json.bmi_value %}
+  {% set bmi_pct = [(run.bmi_result_json.bmi_value / 45 * 100) | round(0) | int, 100] | min %}
+  <div class="bar-track" style="max-width: 320px; margin-top: 0.6rem;">
+    <div class="bar-track__fill" style="width:{{ bmi_pct }}%;"></div>
+  </div>
+  <p style="font-size:0.65rem; opacity:0.5;">BMI scale — healthy: 18.5–25</p>
+  {% endif %}
+  {% else %}
+  <p class="muted">Confidence: {{ (run.bmi_result_json.confidence * 100) | round(1) }}%</p>
+  {% endif %}
+  <div class="entered-values">
+    <p class="entered-values__title">Entered values</p>
+    <table class="entered-table">
+      {% if run.bmi_result_json.height_cm %}<tr><td>Height</td><td class="val">{{ run.bmi_result_json.height_cm }} cm</td></tr>{% endif %}
+      {% if run.bmi_result_json.weight_kg %}<tr><td>Weight</td><td class="val">{{ run.bmi_result_json.weight_kg }} kg</td></tr>{% endif %}
+    </table>
+  </div>
+  {% if charts.bmi %}
+  <img class="chart reveal" src="data:image/png;base64,{{ charts.bmi }}" alt="BMI band chart">
+  {% endif %}
+</div>
+{% endif %}
+
+{# ---- Body Fat ---- #}
+{% if run.bodyfat_result_json %}
+<div class="report-card reveal">
+  <div class="report-card__head">
+    <h2>Body Fat</h2>
+    <span class="badge">{{ run.bodyfat_result_json.label }}</span>
+  </div>
+  {% if run.bodyfat_result_json.bodyfat_value is not none %}
+  <p class="muted">Estimated: <strong>{{ run.bodyfat_result_json.bodyfat_value | round(1) }}%</strong> &middot; Confidence: {{ (run.bodyfat_result_json.confidence * 100) | round(1) }}%</p>
+  {% set bf_pct = [(run.bodyfat_result_json.bodyfat_value / 50 * 100) | round(0) | int, 100] | min %}
+  <div class="bar-track" style="max-width: 320px; margin-top: 0.6rem;">
+    <div class="bar-track__fill" style="width:{{ bf_pct }}%; background: #996600;"></div>
+  </div>
+  <p style="font-size:0.65rem; opacity:0.5;">Body fat scale (0–50%)</p>
+  {% else %}
+  <p class="muted">Confidence: {{ (run.bodyfat_result_json.confidence * 100) | round(1) }}%</p>
+  {% endif %}
+  <div class="entered-values">
+    <p class="entered-values__title">Entered values</p>
+    <table class="entered-table">
+      {% if run.bodyfat_result_json.neck_cm %}<tr><td>Neck</td><td class="val">{{ run.bodyfat_result_json.neck_cm }} cm</td></tr>{% endif %}
+      {% if run.bodyfat_result_json.waist_cm %}<tr><td>Waist</td><td class="val">{{ run.bodyfat_result_json.waist_cm }} cm</td></tr>{% endif %}
+      {% if run.bodyfat_result_json.hip_cm %}<tr><td>Hip</td><td class="val">{{ run.bodyfat_result_json.hip_cm }} cm</td></tr>{% endif %}
+    </table>
+  </div>
+  {% if charts.bodyfat %}
+  <img class="chart reveal" src="data:image/png;base64,{{ charts.bodyfat }}" alt="Body fat band chart">
+  {% endif %}
+</div>
+{% endif %}
+
+{# ---- Calories ---- #}
+{% if run.calorie_result_json %}
+<div class="report-card reveal">
+  <div class="report-card__head">
+    <h2>Ideal Calories</h2>
+    <span class="badge">{{ run.calorie_result_json.label }}</span>
+  </div>
+  <p class="muted">
+    {% if run.calorie_result_json.current_intake %}Current: <strong>{{ run.calorie_result_json.current_intake | round(0) | int }} kcal</strong> &middot; {% endif %}
+    Target: <strong>{{ run.calorie_result_json.target_intake | round(0) | int }} kcal</strong>
+    &middot; Confidence: {{ (run.calorie_result_json.confidence * 100) | round(1) }}%
+  </p>
+  {% if run.calorie_result_json.current_intake and run.calorie_result_json.target_intake %}
+  {% set cal_pct = [(run.calorie_result_json.current_intake / run.calorie_result_json.target_intake * 100) | round(0) | int, 150] | min %}
+  <div class="bar-track" style="max-width: 320px; margin-top: 0.6rem;">
+    <div class="bar-track__fill" style="width:{{ cal_pct }}%; background: {% if cal_pct > 110 %}#cc4400{% elif cal_pct < 90 %}#996600{% else %}#007700{% endif %};"></div>
+  </div>
+  <p style="font-size:0.65rem; opacity:0.5;">Current vs target (100% = ideal)</p>
+  {% endif %}
+  <div class="entered-values">
+    <p class="entered-values__title">Entered values</p>
+    <table class="entered-table">
+      {% if run.calorie_result_json.activity_level %}<tr><td>Activity level</td><td class="val">{{ run.calorie_result_json.activity_level.replace('_', ' ') }}</td></tr>{% endif %}
+      {% if run.calorie_result_json.current_intake %}<tr><td>Current intake</td><td class="val">{{ run.calorie_result_json.current_intake | round(0) | int }} kcal</td></tr>{% endif %}
+    </table>
+  </div>
+  {% if charts.calorie %}
+  <img class="chart reveal" src="data:image/png;base64,{{ charts.calorie }}" alt="Calorie current vs target chart">
+  {% endif %}
+</div>
+{% endif %}
+
+{# ---- Behaviour Profile (fusion) ---- #}
+{% if run.fused_result_json %}
+<div class="report-card report-card--fused reveal">
+  <div class="report-card__head">
+    <h2>Behaviour Profile (AI)</h2>
+    <span class="badge badge--dark">{{ run.fused_result_json.archetype }}</span>
+  </div>
+  <p class="muted">Confidence: <strong>{{ (run.fused_result_json.confidence * 100) | round(1) }}%</strong></p>
+  {% set conf_pct = (run.fused_result_json.confidence * 100) | round(0) | int %}
+  <div class="bar-track" style="max-width: 260px; margin-top: 0.6rem;">
+    <div class="bar-track__fill" style="width:{{ conf_pct }}%; background: var(--safety);"></div>
+  </div>
+  <p style="font-size:0.65rem; opacity:0.5; margin-top:0.2rem;">Model confidence</p>
+  {% if charts.fused %}
+  <img class="chart reveal" src="data:image/png;base64,{{ charts.fused }}" alt="Behaviour profile map chart">
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

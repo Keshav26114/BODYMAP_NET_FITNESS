@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}BodyMap Net — Home{% endblock %}
+
+{% block content %}
+<p class="eyebrow">// Multi-test body composition &amp; behaviour-profile predictor</p>
+<h1 class="page-title">Measure four systems. Build one behaviour profile.</h1>
+<p class="lead">
+    BodyMap Net lets you run any combination of four independent fitness tests,
+    then fuses whatever you completed into a single overall Behaviour Profile
+    using a neural network built to tolerate missing data — and conditioned
+    on your stated goal, so the same body can read differently depending on
+    what you're training for.
+</p>
+
+<div class="btn-row">
+    {% if auth_role %}
+    <a class="btn btn--primary" href="{{ url_for('test') }}">Start a Test</a>
+    <a class="btn" href="{{ url_for('history') }}">View History</a>
+    {% else %}
+    <button type="button" class="btn btn--primary" onclick="document.getElementById('headerLoginBtn').click();">Log in to Start</button>
+    {% endif %}
+</div>
+
+<details class="about-block reveal">
+  <summary>How this works</summary>
+  <div class="about-block__body">
+    <p>Each week, you submit any combination of the four tests below. Every submission
+    is saved against that calendar week, so BodyMap Net builds up a week-by-week history
+    rather than a single snapshot.</p>
+    <ul>
+      <li><strong>Predict</strong> — each test you run goes through its own small neural
+      network to produce a band/label (e.g. "Balanced", "Normal", "On-target"), and if you
+      tick the fifth option, a fusion model combines whichever tests you ran into one overall
+      Behaviour Profile.</li>
+      <li><strong>Judge against your goal</strong> — a shared rulebook decides whether each
+      result is actually good news for <em>your</em> stated goal (a calorie deficit is a win
+      if you're trying to lose fat, and a problem if you're trying to gain muscle) — this
+      same rulebook drives the goal-verdict banner, the tips, and the streaks, so they never
+      contradict each other.</li>
+      <li><strong>Track over time</strong> — streaks count consecutive weeks a metric stayed
+      good or bad, and your full history is always one click away.</li>
+    </ul>
+    <p>See <strong>Test &gt; Model Components</strong> for what each model actually looks at,
+    and <strong>History &gt; How it saves</strong> for how the weekly storage and streaks work.</p>
+  </div>
+</details>
+
+<h2 class="section-title">The four tests</h2>
+<div class="card-grid">
+    <div class="panel">
+        <span class="badge badge--safety">01</span>
+        <h3 style="margin:.8rem 0 .4rem;">Exercise Test</h3>
+        <p style="opacity:.65;font-size:.85rem;">Enter this week's training volume across up to 44 exercises (all optional). Returns a training-adequacy read: under-training, balanced, or over-training.</p>
+    </div>
+    <div class="panel">
+        <span class="badge badge--safety">02</span>
+        <h3 style="margin:.8rem 0 .4rem;">BMI Test</h3>
+        <p style="opacity:.65;font-size:.85rem;">Enter height and weight to place you across the standard BMI bands.</p>
+    </div>
+    <div class="panel">
+        <span class="badge badge--safety">03</span>
+        <h3 style="margin:.8rem 0 .4rem;">Body Fat Test</h3>
+        <p style="opacity:.65;font-size:.85rem;">Enter neck / waist (and hip, if applicable) measurements for a body-fat band estimate.</p>
+    </div>
+    <div class="panel">
+        <span class="badge badge--safety">04</span>
+        <h3 style="margin:.8rem 0 .4rem;">Ideal Calorie Test</h3>
+        <p style="opacity:.65;font-size:.85rem;">Enter activity level and current intake to compare against your Mifflin-St Jeor target.</p>
+    </div>
+</div>
+
+<h2 class="section-title">Behaviour Profile (AI)</h2>
+<div class="panel panel--dark">
+    <p style="font-size:.9rem;line-height:1.9;">
+        Tick the fifth option and a fusion neural network combines whichever of
+        the four tests you completed &mdash; one, two, three, or all four &mdash; into a
+        single behaviour-profile prediction: <strong>Obesity Risk</strong>,
+        <strong>Buff / Muscular</strong>, <strong>Skinny Athlete</strong>,
+        <strong>Average / Balanced</strong>, or <strong>Endurance-Focused</strong>.
+        It's conditioned on your stated goal, so it isn't just "what body type is this" —
+        it's "does this match what you're training for". Because it uses learned
+        "missing-branch" signals rather than zeros, it also degrades gracefully when
+        tests are skipped.
+    </p>
+</div>
+
+<p class="privacy">
+    This is a demonstration project, not a medical or security-grade system.
+    Accounts are created by an admin and protected by a password; use the
+    "Log in" button in the top corner to sign in as a user or as an admin.
+    Don't enter sensitive real names if you'd rather stay anonymous &mdash; a
+    nickname works fine.
+</p>
+{% endblock %}

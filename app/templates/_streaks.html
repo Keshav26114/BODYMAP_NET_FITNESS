@@ -1,0 +1,17 @@
+{# Reusable "weekly streaks" panel. Expects `weekly_streaks` in context. #}
+{% if weekly_streaks %}
+<div class="streaks-panel reveal">
+  <p class="streaks__title">// Weekly Streaks &mdash; consecutive-week trends</p>
+  <div class="streaks-grid">
+    {% for s in weekly_streaks %}
+    <div class="streak-badge streak-badge--{{ s.direction }}">
+      <span class="streak-badge__multiplier">{{ s.count }}&times;</span>
+      <span class="streak-badge__body">
+        <span class="streak-badge__label">{{ s.label }}</span>
+        <span class="streak-badge__text">{{ s.message }}</span>
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
